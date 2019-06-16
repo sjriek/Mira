@@ -25,7 +25,8 @@ use_dlib = True
 enable_servos = True
 # select one of these servo libraries
 use_rpi_gpio = False
-use_pigpio = True
+use_pigpio = True # to get this to work you must rund the gpoiod deamon --> sudo pigpiod
+
 
 #-----------------------------------------------------------#
 
