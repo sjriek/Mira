@@ -4,6 +4,7 @@
 # install opencv: -->  pip3 install opencv-python
 # install missing dependencies (if needed): --> sudo apt-get install -y libcblas-dev libhdf5-dev libhdf5-serial-dev libatlas-base-dev libjasper-dev  libqtgui4  libqt4-test
 # install and compile dlib: --> https://www.pyimagesearch.com/2017/05/01/install-dlib-raspberry-pi/
+# install cvlib --> pip install cvlib 
 # if needed get haarcascade xml files: can be found in /resources download was currupt!? copied from usb
 # install pigpio: --> pip3 install pigpio
 
@@ -14,12 +15,13 @@
 measure_fps = True
 
 # select one of these software libraries for camera capture
-use_picamera = True
-use_imutils = False
+use_picamera = False
+use_imutils = True
 
 # select one of these face detection methods
 use_haarcacades = False
-use_dlib = True
+use_dlib = False
+use_cvlib = True
 
 # enable servos
 enable_servos = True
@@ -32,7 +34,17 @@ use_pigpio = True # to get this to work you must rund the gpoiod deamon --> sudo
 
 import time
 import cv2
+import os # needed to start the pigpio deamon
 #import tkinter
+
+# assign GPIO pinout numbers to constants
+SERVO_PAN = 18
+SERVO_TILT = 24
+SERVO_ROLL = 23
+
+PAN_CENTRE = pan_pwm = 1500
+TILT_CENTRE = tilt_pwm = 1500
+ROLL_CENTRE = roll_pwm = 1500
 
 if use_picamera:
     from picamera.array import PiRGBArray
@@ -44,27 +56,29 @@ if enable_servos:
     if use_rpi_gpio:
         import RPi.GPIO as GPIO
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(18, GPIO.OUT)
-        pan_pwm = GPIO.PWM(18, 100)
+        GPIO.setup(SERVO_PAN, GPIO.OUT)
+        pan_pwm = GPIO.PWM(SERVO_PAN, 100)
         pan_pwm.start(50) 
-        GPIO.setup(23, GPIO.OUT)
-        roll_pwm = GPIO.PWM(23, 100)
+        GPIO.setup(SERVO_ROLL, GPIO.OUT)
+        roll_pwm = GPIO.PWM(SERVO_ROLL, 100)
         roll_pwm.start(13)
-        GPIO.setup(24, GPIO.OUT)
-        tilt_pwm = GPIO.PWM(24, 100)
+        GPIO.setup(SERVO_TILT, GPIO.OUT)
+        tilt_pwm = GPIO.PWM(SERVO_TILT, 100)
         tilt_pwm.start(13)
 
     if use_pigpio:
         import pigpio
+        os.system("sudo pigpiod")
+        time.sleep(1)
         pi=pigpio.pi()
-        pi.set_mode(18,pigpio.OUTPUT)
-        pi.set_servo_pulsewidth(18,1500)
-
-        pi.set_mode(23,pigpio.OUTPUT)
-        pi.set_servo_pulsewidth(24,1500)
+        pi.set_mode(SERVO_PAN,pigpio.OUTPUT)
+        pi.set_servo_pulsewidth(SERVO_PAN,PAN_CENTRE)
+        pi.set_mode(SERVO_TILT,pigpio.OUTPUT)
+        pi.set_servo_pulsewidth(SERVO_TILT,TILT_CENTRE)
+        pi.set_mode(SERVO_ROLL,pigpio.OUTPUT)
+        pi.set_servo_pulsewidth(SERVO_ROLL,ROLL_CENTRE)
         
-        pi.set_mode(24,pigpio.OUTPUT)
-        pi.set_servo_pulsewidth(23,1500)
+
         
 
 #    if use_wiringpi:
@@ -78,7 +92,8 @@ if enable_servos:
 
 
 
-ppwm = 1500
+
+
 
 #from RPIO import PWM
 #if enable_servos:
@@ -88,8 +103,7 @@ ppwm = 1500
 
 
 
-if use_dlib:
-    import dlib
+
 
 width = 640
 height = 480
@@ -112,7 +126,11 @@ if use_haarcacades:
     #face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 if use_dlib:
+    import dlib
     detector = dlib.get_frontal_face_detector()
+    
+if use_cvlib:
+    import cvlib as cv
     
 if measure_fps:
     start_time = time.time()
@@ -125,6 +143,7 @@ if use_picamera:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         xpos = 0
+        ypos = 0
 
         if use_haarcacades:
     #        print (face_cascade.empty())
@@ -161,9 +180,9 @@ if use_picamera:
             
         if enable_servos:    
 #            pan_pwm.ChangeDutyCycle(ppwm)
-            pi.set_servo_pulsewidth(18,ppwm)
-            pi.set_servo_pulsewidth(24,1500)
-            pi.set_servo_pulsewidth(23,1500)
+            pi.set_servo_pulsewidth(SERVO_PAN,PAN_CENTRE)
+            pi.set_servo_pulsewidth(SERVO_TILT,TILT_CENTRE)
+            pi.set_servo_pulsewidth(SERVO_ROLL,ROLL_CENTRE)
         
         cv2.imshow("Image", img)
         rawCapture.truncate(0)
@@ -189,6 +208,7 @@ if use_imutils:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         xpos = 0
+        ypos = 0
 
         if use_haarcacades:
     #        print (face_cascade.empty())
@@ -197,9 +217,8 @@ if use_imutils:
                 img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
                 roi_gray = gray[y:y+h, x:x+w]
                 roi_color = img[y:y+h, x:x+w]
-                xpos = (x+w/2)
-                
-                
+                xpos = (x+ w/2)
+                ypos = (y+ h/2)
                 
         if use_dlib:
             faces = detector(gray)
@@ -211,20 +230,55 @@ if use_imutils:
                 img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
                 roi_gray = gray[y:y+h, x:x+w]
                 roi_color = img[y:y+h, x:x+w]
+                xpos = (x+ w/2)
+                ypos = (y+ h/2)
+
+        if use_cvlib:
+            faces, confidences = cd.detect_face(gray)
+            for face in faces:
+                x = face.left()
+                y = face.top()
+                w = face.right() - x
+                h = face.bottom() - y
+                img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
+                roi_gray = gray[y:y+h, x:x+w]
+                roi_color = img[y:y+h, x:x+w]
+                xpos = (x+ w/2)
+                ypos = (y+ h/2)            
+
+
+        pmw_stepsize = 25
+        detection_treshold = 50
+        upper_servo_limit = 2500
+        lower_servo_limit = 500
+        width_detection_range = width/2
+        height_detection_range = height/2
 
         dx = xpos - width/2
-        print (dx, ppwm)
-        if dx<-100:
-            if ppwm < 30:
-                ppwm += 1
-            
-        if dx>100:
-            if ppwm > 10:
-                ppwm -= 1
-            
+        if -width_detection_range<dx<-detection_treshold:
+            if pan_pwm < upper_servo_limit:
+                pan_pwm += pmw_stepsize
+        if width_detection_range>dx>detection_treshold:
+            if pan_pwm > lower_servo_limit:
+                pan_pwm -= pmw_stepsize
+#        print (xpos, dx, pan_pwm)
+
+        dy = ypos - height/2
+        if -height_detection_range<dy<-detection_treshold:
+            if tilt_pwm < upper_servo_limit:
+                tilt_pwm += pmw_stepsize
+        if height_detection_range>dy>detection_treshold:
+            if tilt_pwm > lower_servo_limit:
+                tilt_pwm -= pmw_stepsize
+        print (ypos, dy, tilt_pwm)
+
+
+
         if enable_servos:    
-            pan_pwm.ChangeDutyCycle(ppwm)
-        
+#            pan_pwm.ChangeDutyCycle(ppwm)
+            pi.set_servo_pulsewidth(SERVO_PAN,pan_pwm)
+            pi.set_servo_pulsewidth(SERVO_TILT,tilt_pwm)
+            pi.set_servo_pulsewidth(SERVO_ROLL,ROLL_CENTRE)      
 
         
         cv2.imshow("Image", img)
