@@ -4,9 +4,22 @@
 # install opencv: -->  pip3 install opencv-python
 # install missing dependencies (if needed): --> sudo apt-get install -y libcblas-dev libhdf5-dev libhdf5-serial-dev libatlas-base-dev libjasper-dev  libqtgui4  libqt4-test
 # install and compile dlib: --> https://www.pyimagesearch.com/2017/05/01/install-dlib-raspberry-pi/
-# install cvlib --> pip install cvlib 
+# You may encounter an "undefined symbol: __atomic_fetch_add8" for libatomic  ---> pip3 install opencv-contrib-python==4.1.0.25
+# install cvlib --> pip3 install cvlib 
 # if needed get haarcascade xml files: can be found in /resources download was currupt!? copied from usb
 # install pigpio: --> pip3 install pigpio
+
+
+
+#FPS measurement RPI4
+# Picamera, HaarCascades: 7.1 FPS : 320x240 29 fps
+# Picamera, dlib : 2,86 FPS : 320x240 7.31 fps (detection distance loss)
+# picamera, CVlib: 2,95 FPS : 320x240 3.28 fps
+
+#ImUtils, Haarcascades: 10.75 FPS : 320x240 42 fps
+#ImUtils, Dlib: 3.63 FPS : 320x240 14.5 fps (detection distance loss)
+#Imutils, CVlib: 2,85 FPS : 320x240 3,68 fps
+
 
 
 #---------- configuration-----------------------------------#
@@ -24,10 +37,10 @@ use_dlib = False
 use_cvlib = True
 
 # enable servos
-enable_servos = True
+enable_servos = False
 # select one of these servo libraries
-use_rpi_gpio = False
-use_pigpio = True # to get this to work you must rund the gpoiod deamon --> sudo pigpiod
+use_rpi_gpio = True
+use_pigpio = False # to get this to work you must rund the gpoiod deamon --> sudo pigpiod
 
 
 #-----------------------------------------------------------#
@@ -105,8 +118,11 @@ if enable_servos:
 
 
 
-width = 640
-height = 480
+width = 320
+height = 240
+#width = 640
+#height = 480
+
 
 if use_picamera:
     camera = PiCamera()
@@ -122,7 +138,7 @@ if use_imutils:
 time.sleep(1.0) # wait for camera
 
 if use_haarcacades:
-    face_cascade =  cv2.CascadeClassifier('/home/pi/Mira/resources/haarcascade_frontalface_alt.xml')
+    face_cascade =  cv2.CascadeClassifier('/home/pi/python/Mira/resources/haarcascade_frontalface_alt.xml')
     #face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 if use_dlib:
@@ -136,6 +152,12 @@ if measure_fps:
     start_time = time.time()
 
 if use_picamera:
+    ppwm = 0
+    if measure_fps:
+        HFS = 0
+        frames = 0
+        
+    
     for frame in camera.capture_continuous(rawCapture, format="bgr",  use_video_port=True):
 
     #    image=np.asarray(frame.array)
@@ -168,8 +190,22 @@ if use_picamera:
                 roi_color = img[y:y+h, x:x+w]
                 xpos = (x+w/2)
 
+
+        if use_cvlib:
+            faces, confidences = cv.detect_face(img)
+            for face,conf in zip(faces,confidences):
+                x = face[0]
+                y = face[1]
+                w = face[2] - x
+                h = face[3] - y
+                #img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
+                roi_gray = gray[y:y+h, x:x+w]
+                roi_color = img[y:y+h, x:x+w]
+                xpos = (x+w/2)
+
         dx = xpos - width/2
-        print (xpos, dx, ppwm)
+        
+        #print (xpos, dx, ppwm)
         if dx<-100:
             if ppwm < 2500:
                 ppwm += 100
@@ -192,7 +228,15 @@ if use_picamera:
             
         if measure_fps:
             current_time = time.time()
-            print("FPS: ", 1.0/(current_time - start_time))
+            FPS = 1.0/(current_time - start_time)
+            #print("FPS: ", 1.0/(current_time - start_time))
+            frames = frames+1
+            HFS = HFS + FPS
+            if frames == 100:
+                print ("HFS: ", HFS, " Avg over 100 measurements: ", HFS/100)
+                HFS= 0
+                frames = 0
+              
             start_time = current_time
         
         k = cv2.waitKey(1) & 0xff # escape key
@@ -201,6 +245,11 @@ if use_picamera:
     
 
 if use_imutils:
+    
+    if measure_fps:
+        HFS = 0
+        frames = 0
+        
     while True:
 
     #    image=np.asarray(frame.array)
@@ -234,17 +283,16 @@ if use_imutils:
                 ypos = (y+ h/2)
 
         if use_cvlib:
-            faces, confidences = cd.detect_face(gray)
-            for face in faces:
-                x = face.left()
-                y = face.top()
-                w = face.right() - x
-                h = face.bottom() - y
+            faces, confidences = cv.detect_face(img)
+            for face,conf in zip(faces,confidences):
+                x = face[0]
+                y = face[1]
+                w = face[2] - x
+                h = face[3] - y
                 img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2)
                 roi_gray = gray[y:y+h, x:x+w]
                 roi_color = img[y:y+h, x:x+w]
-                xpos = (x+ w/2)
-                ypos = (y+ h/2)            
+                xpos = (x+w/2)         
 
 
         pmw_stepsize = 25
@@ -270,7 +318,7 @@ if use_imutils:
         if height_detection_range>dy>detection_treshold:
             if tilt_pwm > lower_servo_limit:
                 tilt_pwm -= pmw_stepsize
-        print (ypos, dy, tilt_pwm)
+        #print (ypos, dy, tilt_pwm)
 
 
 
@@ -288,7 +336,14 @@ if use_imutils:
             
         if measure_fps:
             current_time = time.time()
-            print("FPS: ", 1.0/(current_time - start_time))
+            FPS = 1.0/(current_time - start_time)
+            #print("FPS: ", 1.0/(current_time - start_time))
+            frames = frames+1
+            HFS = HFS + FPS
+            if frames == 100:
+                print ("HFS: ", HFS, " Avg over 100 measurements: ", HFS/100)
+                HFS= 0
+                frames = 0
             start_time = current_time
         
         k = cv2.waitKey(1) & 0xff # escape key
